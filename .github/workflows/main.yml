@@ -19,92 +19,27 @@ jobs:
       with:
         vs-version: latest
 
-    # 关键修改：直接调用 Visual Studio Installer 添加 .NET Framework 4.0 Targeting Pack
-    - name: Add .NET Framework 4.0 Targeting Pack to VS Installation
+    # 新增步骤：直接下载并安装 .NET Framework 4.0 开发人员包
+    - name: Download and Install .NET Framework 4.0 Developer Pack
       shell: powershell
       run: |
-        # 直接使用硬编码的 Program Files (x86) 路径，这是最可靠的方式
-        $programFilesX86Path = "C:\Program Files (x86)"
-        $vswherePath = Join-Path -Path $programFilesX86Path -ChildPath "Microsoft Visual Studio\Installer\vswhere.exe"
-        # 直接硬编码 Visual Studio Installer (setup.exe) 的路径
-        $setupExePath = Join-Path -Path $programFilesX86Path -ChildPath "Microsoft Visual Studio\Installer\setup.exe"
-        
-        # 首先检查 vswhere.exe 和 setup.exe 是否存在
-        if (-not (Test-Path $vswherePath)) {
-            Write-Error "Error: vswhere.exe not found at: $vswherePath. This is critical for locating Visual Studio."
+        $downloadUrl = "https://download.microsoft.com/download/9/5/B/95B00632-DD93-4E7F-A880-DA68305607B9/dotNetFx40_Full_setup.exe"
+        $outputPath = "$env:TEMP\dotNetFx40_Full_setup.exe"
+
+        Write-Host "Downloading .NET Framework 4.0 Full Redistributable (includes developer pack components)..."
+        # 使用 Invoke-WebRequest 下载文件
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $outputPath -TimeoutSec 300 # 增加超时时间，避免下载大文件时超时
+
+        Write-Host "Installing .NET Framework 4.0..."
+        # 使用 Start-Process 静默安装，/q 或 /quiet 参数表示静默，/norestart 表示不重启
+        Start-Process -FilePath $outputPath -ArgumentList "/q /norestart" -Wait -PassThru | Out-Null
+
+        # 检查安装程序的退出代码。0 通常表示成功，3010 表示成功但需要重启。
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Error "Failed to install .NET Framework 4.0. Installer exited with code: $LASTEXITCODE"
             exit 1
         }
-        Write-Host "Found vswhere.exe at: $vswherePath"
-
-        if (-not (Test-Path $setupExePath)) {
-            Write-Error "Error: Visual Studio Installer (setup.exe) not found at: $setupExePath. This is critical for modifying Visual Studio."
-            exit 1
-        }
-        Write-Host "Found Visual Studio Installer (setup.exe) at: $setupExePath"
-
-        # 定义要尝试的 Visual Studio 产品ID列表，按照在GitHub Actions运行器上常见的顺序
-        $productIdsToTry = @(
-            "Microsoft.VisualStudio.Product.Community", # 社区版最常见
-            "Microsoft.VisualStudio.Product.Professional",
-            "Microsoft.VisualStudio.Product.Enterprise" # 企业版不太常见
-        )
-
-        $vsInstallationPath = $null
-        $componentId = "Microsoft.Component.NetFX.TargetPack.4.0"
-
-        # 尝试通过遍历产品ID来查找 Visual Studio 安装路径
-        foreach ($productId in $productIdsToTry) {
-            Write-Host "Attempting to locate Visual Studio installation path for product ID: '$productId'..."
-            
-            # vswhere 参数，只查询 installationPath
-            $vswhereArgsForInstallationPath = @(
-                '-latest',
-                '-products', $productId,
-                '-property', 'installationPath'
-            )
-
-            # 执行 vswhere 获取 installationPath
-            $rawOutputInstallation = & "$vswherePath" @vswhereArgsForInstallationPath 2>&1
-            $currentVsInstallationPath = ($rawOutputInstallation | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String).Trim()
-
-            # 检查 vswhere 是否输出了错误/警告信息
-            $installationOutputHasError = $rawOutputInstallation | Where-Object { $_ -match 'Error|Warning' }
-
-            # 如果找到了有效的安装路径，且 vswhere 本身没有报告错误，则使用此安装并退出循环
-            if ($currentVsInstallationPath -and (Test-Path $currentVsInstallationPath) -and (-not $installationOutputHasError) ) {
-                $vsInstallationPath = $currentVsInstallationPath
-                Write-Host "Successfully located Visual Studio ($productId) at '$vsInstallationPath'"
-                break # 找到了，退出循环
-            } else {
-                Write-Host "Could not locate a valid Visual Studio installation for '$productId' or path not valid. Debug Info:"
-                Write-Host "  Attempted Installation Path: '$currentVsInstallationPath'"
-                if ($installationOutputHasError) {
-                    Write-Host "  vswhere Raw Output (Error/Warning lines): $($($installationOutputHasError | Out-String).Trim())"
-                } else {
-                    Write-Host "  vswhere All Output: $($($rawOutputInstallation | Out-String).Trim())"
-                }
-            }
-        }
-
-        # 循环结束后，再次检查是否找到了可用的 Visual Studio 安装
-        if (-not $vsInstallationPath) {
-            Write-Error "Error: Failed to find any suitable Visual Studio 2022 installation (Community, Professional, or Enterprise) to modify after checking all common editions."
-            exit 1
-        }
-
-        Write-Host "Proceeding with Visual Studio Installer (setup.exe) at: '$setupExePath'"
-        Write-Host "Targeting Visual Studio installation at: '$vsInstallationPath'"
-        Write-Host "Adding component '$componentId' to Visual Studio installation..."
-
-        # 调用 Visual Studio Installer，以静默方式添加组件
-        Start-Process -FilePath $setupExePath -ArgumentList "modify --installPath ""$vsInstallationPath"" --add $($componentId) --quiet --norestart" -Wait -PassThru | Out-Null
-        
-        # 检查 Start-Process 命令的退出代码
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { # 3010 表示成功但需要重启
-            Write-Error "Failed to add .NET Framework 4.0 Targeting Pack. Visual Studio Installer exited with code: $LASTEXITCODE"
-            exit 1
-        }
-        Write-Host ".NET Framework 4.0 Targeting Pack added successfully into Visual Studio installation."
+        Write-Host ".NET Framework 4.0 installed successfully."
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
