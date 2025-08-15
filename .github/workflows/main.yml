@@ -60,7 +60,8 @@ jobs:
             # 将标准输出和错误输出都捕获到 $rawOutputInstaller
             $rawOutputInstaller = & "$vswherePath" @vswhereArgsForInstallerPath 2>&1
             # 从输出中提取路径，并过滤掉错误/警告/版本信息行，然后清理空格
-            $currentSetupExePath = $rawOutputInstaller | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String | Trim()
+            # 修正：将 (Out-String).Trim() 才能正确调用字符串方法
+            $currentSetupExePath = ($rawOutputInstaller | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String).Trim()
 
             # 修改参数以获取 installationPath
             $vswhereArgsForInstallationPath = @(
@@ -71,9 +72,12 @@ jobs:
 
             # 执行 vswhere 获取 installationPath
             $rawOutputInstallation = & "$vswherePath" @vswhereArgsForInstallationPath 2>&1
-            $currentVsInstallationPath = $rawOutputInstallation | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String | Trim()
+            # 修正同上
+            $currentVsInstallationPath = ($rawOutputInstallation | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String).Trim()
 
             # 检查 vswhere 是否输出了错误/警告信息
+            # 注意这里对 $installerOutputHasError 和 $installationOutputHasError 的赋值方式，它们本身就是字符串集合
+            # 这里不用Trim，因为目的只是检查是否有错误行，不是为了处理路径
             $installerOutputHasError = $rawOutputInstaller | Where-Object { $_ -match 'Error|Warning' }
             $installationOutputHasError = $rawOutputInstallation | Where-Object { $_ -match 'Error|Warning' }
 
@@ -90,15 +94,19 @@ jobs:
                 Write-Host "Could not locate a valid Visual Studio installation for '$productId'. Debug Info:"
                 Write-Host "  Attempted Installer Path: '$currentSetupExePath'"
                 if ($installerOutputHasError) {
-                    Write-Host "  vswhere Installer Raw Output (Error/Warning lines): $($installerOutputHasError | Out-String | Trim())"
+                    # 修正：将 (Out-String).Trim()
+                    Write-Host "  vswhere Installer Raw Output (Error/Warning lines): $($($installerOutputHasError | Out-String).Trim())"
                 } else {
-                    Write-Host "  vswhere Installer All Output: $($rawOutputInstaller | Out-String | Trim())"
+                    # 修正：将 (Out-String).Trim()
+                    Write-Host "  vswhere Installer All Output: $($($rawOutputInstaller | Out-String).Trim())"
                 }
                 Write-Host "  Attempted Installation Path: '$currentVsInstallationPath'"
                 if ($installationOutputHasError) {
-                    Write-Host "  vswhere Installation Raw Output (Error/Warning lines): $($installationOutputHasError | Out-String | Trim())"
+                    # 修正：将 (Out-String).Trim()
+                    Write-Host "  vswhere Installation Raw Output (Error/Warning lines): $($($installationOutputHasError | Out-String).Trim())"
                 } else {
-                    Write-Host "  vswhere Installation All Output: $($rawOutputInstallation | Out-String | Trim())"
+                    # 修正：将 (Out-String).Trim()
+                    Write-Host "  vswhere Installation All Output: $($($rawOutputInstallation | Out-String).Trim())"
                 }
             }
         }
