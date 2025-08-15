@@ -18,14 +18,18 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
       with:
         vs-version: latest
-        # 关键修改：明确添加 .NET Framework 4.0 Targeting Pack 组件
-        vs-installer-arguments: --add Microsoft.Component.NetFX.TargetPack.4.0 --includeOptional 
+        # 移除 vs-installer-arguments，因为似乎没能有效安装 Target Pack
+        # vs-installer-arguments: --add Microsoft.Component.NetFX.TargetPack.4.0 --includeOptional 
+
+    # 关键修改：新增一个步骤，使用 Chocolatey 安装 .NET Framework 4.0 Developer Pack
+    - name: Install .NET Framework 4.0 Developer Pack
+      run: choco install netfx-40-devpack -y
+      shell: powershell # 确保使用 PowerShell 来运行 choco 命令
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
 
     - name: Build Solution
-      # 移除 ReferencePath 参数，因为 Targeting Pack 安装后不再需要
       run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" 
 
     - name: Upload Build Artifact
