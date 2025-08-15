@@ -18,47 +18,48 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
       with:
         vs-version: latest
-        # 移除 vs-installer-arguments，因为它似乎没能有效安装 Target Pack
-        # 我们将直接调用 VS Installer
 
     # 关键修改：直接调用 Visual Studio Installer 添加 .NET Framework 4.0 Targeting Pack
     - name: Add .NET Framework 4.0 Targeting Pack to VS Installation
-      shell: powershell # 确保这里是 powershell
-      run: |            # 注意这里的竖线 | 表示多行字符串，下一行开始是脚本内容
-        # 查找 Visual Studio Installer 的可执行文件
-        $installerPath = & "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installerPath
+      shell: powershell
+      run: |
+        # 使用 $env:ProgramFilesX86 和 Join-Path 确保路径解析正确
+        $installerBaseDir = Join-Path -Path $env:ProgramFilesX86 -ChildPath "Microsoft Visual Studio\Installer"
+        $vswherePath = Join-Path -Path $installerBaseDir -ChildPath "vswhere.exe"
+        
+        # 查找 Visual Studio Installer 的可执行文件 (setup.exe)
+        # 注意：此处 $installerPath 应该是 setup.exe 的路径，通常在 $installerBaseDir 目录下
+        # vswhere -property installerPath 实际返回的是 installer\setup.exe
+        $setupExePath = & "$vswherePath" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installerPath
         
         # 查找 Visual Studio 2022 Enterprise 的安装路径
-        $vsInstallationPath = & "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+        $vsInstallationPath = & "$vswherePath" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
         
         $componentId = "Microsoft.Component.NetFX.TargetPack.4.0"
 
-        if (-not $installerPath) {
-            Write-Error "Could not find Visual Studio Installer path."
+        if (-not $setupExePath) {
+            Write-Error "Could not find Visual Studio Installer (setup.exe) path using vswhere.exe."
             exit 1
         }
         if (-not $vsInstallationPath) {
-            Write-Error "Could not find Visual Studio 2022 Enterprise installation path."
+            Write-Error "Could not find Visual Studio 2022 Enterprise installation path using vswhere.exe."
+            exit 1
+        }
+        if (-not (Test-Path $setupExePath)) {
+            Write-Error "Visual Studio Installer (setup.exe) not found at: $setupExePath"
             exit 1
         }
 
-        Write-Host "Found Visual Studio Installer at: $installerPath"
+        Write-Host "Found Visual Studio Installer (setup.exe) at: $setupExePath"
         Write-Host "Found Visual Studio 2022 Enterprise at: $vsInstallationPath"
         Write-Host "Adding component '$componentId' to Visual Studio installation..."
 
         # 调用 Visual Studio Installer，以静默方式添加组件
-        # --add：添加指定的组件
-        # --installPath：指定要修改的 VS 实例
-        # --quiet：静默模式 (不显示UI)
-        # --norestart：完成后不重启
-        # 注意这里的 ""$vsInstallationPath"" 是为了在参数中正确处理带空格的路径
-        Start-Process -FilePath $installerPath -ArgumentList "modify --installPath ""$vsInstallationPath"" --add $($componentId) --quiet --norestart" -Wait -PassThru | Out-Null
+        Start-Process -FilePath $setupExePath -ArgumentList "modify --installPath ""$vsInstallationPath"" --add $($componentId) --quiet --norestart" -Wait -PassThru | Out-Null
         
-        # 检查安装程序的退出代码
-        # 0 表示成功，3010 也表示成功但需要重启（我们通过 /norestart 阻止了重启）
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
             Write-Error "Failed to add .NET Framework 4.0 Targeting Pack. Exit Code: $LASTEXITCODE"
-            exit 1 # 如果安装失败，则使此步骤失败
+            exit 1
         }
         Write-Host ".NET Framework 4.0 Targeting Pack added successfully into Visual Studio installation."
 
