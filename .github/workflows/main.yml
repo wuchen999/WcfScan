@@ -1,9 +1,10 @@
-name: Build WcfScan Project
+name: Build WcfScan x64
 
 on:
   push:
-    branches:
-      - main
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
   workflow_dispatch:
 
 jobs:
@@ -11,27 +12,25 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup MSBuild and .NET Framework 4.0 Targeting Pack
-      uses: microsoft/setup-msbuild@v1.1
-      with:
-        vs-version: latest
-        # 再次尝试通过 vs-installer-arguments 强制安装 .NET Framework 4.0 Targeting Pack
-        # 加上 --force 参数，尝试确保安装成功
-        # 加上 --noWeb 来尝试避免网络问题（虽然这里是特定组件安装）
-        # 确保 --add 命令正确，并包含 --includeOptional 以防万一
-        vs-installer-arguments: --add Microsoft.Component.NetFX.TargetPack.4.0 --includeOptional --force
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
 
-    - name: Restore NuGet Packages
-      run: msbuild WcfScan.sln /t:Restore
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
 
-    - name: Build Solution
-      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" 
+      - name: Restore NuGet packages
+        run: nuget restore WcfScan.sln
 
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: WcfScan-Build
-        path: WcfScan/bin/Release/
+      - name: Build solution (Release x64)
+        run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="x64"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WcfScan-x64
+          path: |
+            **/bin/Release/x64/**/*.exe
+            **/bin/Release/x64/**/*.dll
