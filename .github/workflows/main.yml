@@ -24,13 +24,13 @@ jobs:
       - name: Restore NuGet packages
         run: nuget restore WcfScan.sln
 
-      - name: Build solution (Release x64)
-        run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="x64"
+      - name: Build solution (Release Any CPU -> 64-bit)
+        run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" /p:PlatformTarget=x64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: WcfScan-x64
           path: |
-            **/bin/Release/x64/**/*.exe
-            **/bin/Release/x64/**/*.dll
+            **/bin/Release/**/*.exe
+            **/bin/Release/**/*.dll
