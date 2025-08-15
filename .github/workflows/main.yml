@@ -15,6 +15,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install .NET Framework 4.0 Developer Pack
+        run: |
+          Invoke-WebRequest -Uri "https://download.microsoft.com/download/1/5/A/15A7E843-0ACD-4076-BE05-3A405BE5F11A/dotNetFx40_Full_x86_x64.exe" -OutFile "dotNetFx40_Full_x86_x64.exe"
+          Start-Process dotNetFx40_Full_x86_x64.exe -ArgumentList "/quiet", "/norestart" -Wait
+        shell: powershell
+
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
