@@ -17,7 +17,8 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.1
       with:
-        vs-version: latest # <-- 这一行是关键的修改
+        vs-version: latest
+        vs-installer-arguments: --add Microsoft.VisualStudio.Workload.ManagedDesktop --includeOptional # <-- 新增或修改的行
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
