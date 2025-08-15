@@ -19,27 +19,28 @@ jobs:
       with:
         vs-version: latest
 
-    # 新增步骤：直接下载并安装 .NET Framework 4.0 开发人员包
-    - name: Download and Install .NET Framework 4.0 Developer Pack
+    # 新增步骤：直接下载并安装 .NET Framework 4.0 开发人员包 (SDK)
+    - name: Download and Install .NET Framework 4.0 Developer Pack (SDK)
       shell: powershell
       run: |
-        $downloadUrl = "https://download.microsoft.com/download/9/5/B/95B00632-DD93-4E7F-A880-DA68305607B9/dotNetFx40_Full_setup.exe"
-        $outputPath = "$env:TEMP\dotNetFx40_Full_setup.exe"
+        # 更正后的 URL，指向 .NET Framework 4.0 SDK (包含开发人员工具和引用程序集)
+        $downloadUrl = "https://download.microsoft.com/download/6/4/3/6438D1DB-F51B-40B3-B715-CEBF52758201/dotNetFx40_SDK.exe"
+        $outputPath = "$env:TEMP\dotNetFx40_SDK.exe" # 更新文件名以匹配下载内容
 
-        Write-Host "Downloading .NET Framework 4.0 Full Redistributable (includes developer pack components)..."
+        Write-Host "Downloading .NET Framework 4.0 SDK (includes developer pack components)..."
         # 使用 Invoke-WebRequest 下载文件
         Invoke-WebRequest -Uri $downloadUrl -OutFile $outputPath -TimeoutSec 300 # 增加超时时间，避免下载大文件时超时
 
-        Write-Host "Installing .NET Framework 4.0..."
+        Write-Host "Installing .NET Framework 4.0 SDK..."
         # 使用 Start-Process 静默安装，/q 或 /quiet 参数表示静默，/norestart 表示不重启
         Start-Process -FilePath $outputPath -ArgumentList "/q /norestart" -Wait -PassThru | Out-Null
 
         # 检查安装程序的退出代码。0 通常表示成功，3010 表示成功但需要重启。
         if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-            Write-Error "Failed to install .NET Framework 4.0. Installer exited with code: $LASTEXITCODE"
+            Write-Error "Failed to install .NET Framework 4.0 SDK. Installer exited with code: $LASTEXITCODE"
             exit 1
         }
-        Write-Host ".NET Framework 4.0 installed successfully."
+        Write-Host ".NET Framework 4.0 SDK installed successfully."
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
