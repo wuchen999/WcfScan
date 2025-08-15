@@ -3,8 +3,8 @@ name: Build WcfScan Project
 on:
   push:
     branches:
-      - main # 当代码推送到 main 分支时触发
-  workflow_dispatch: # 你添加了手动触发，很好！
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
@@ -12,12 +12,12 @@ jobs:
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4 # 这里也顺便更新到v4，虽然v3也能用但v4更推荐
+      uses: actions/checkout@v4
 
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v1.1
       with:
-        msbuild-version: latest
+        vs-version: latest # <-- 这一行是关键的修改
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
@@ -26,7 +26,7 @@ jobs:
       run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU"
 
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4 # 这就是需要修改的地方！
+      uses: actions/upload-artifact@v4
       with:
         name: WcfScan-Build
         path: WcfScan/bin/Release/
