@@ -1,10 +1,9 @@
-name: Build WcfScan x64
+name: Build WcfScan Project
 
 on:
   push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -12,31 +11,64 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions:checkout@v4
 
-      - name: Install .NET Framework 4.0 Developer Pack
-        run: |
-          Invoke-WebRequest -Uri "https://download.microsoft.com/download/1/5/A/15A7E843-0ACD-4076-BE05-3A405BE5F11A/dotNetFx40_Full_x86_x64.exe" -OutFile "dotNetFx40_Full_x86_x64.exe"
-          Start-Process dotNetFx40_Full_x86_x64.exe -ArgumentList "/quiet", "/norestart" -Wait
-        shell: powershell
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.1
+      with:
+        vs-version: latest
+        # 移除 vs-installer-arguments，因为它似乎没能有效安装 Target Pack
+        # 我们将直接调用 VS Installer
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+    # 关键修改：直接调用 Visual Studio Installer 添加 .NET Framework 4.0 Targeting Pack
+    - name: Add .NET Framework 4.0 Targeting Pack to VS Installation
+      shell: powershell
+      run: |
+        # 查找 Visual Studio Installer 的可执行文件
+        $installerPath = & "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installerPath
+        
+        # 查找 Visual Studio 2022 Enterprise 的安装路径
+        $vsInstallationPath = & "$env:ProgramFiles(x86)\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+        
+        $componentId = "Microsoft.Component.NetFX.TargetPack.4.0"
 
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
+        if (-not $installerPath) {
+            Write-Error "Could not find Visual Studio Installer path."
+            exit 1
+        }
+        if (-not $vsInstallationPath) {
+            Write-Error "Could not find Visual Studio 2022 Enterprise installation path."
+            exit 1
+        }
 
-      - name: Restore NuGet packages
-        run: nuget restore WcfScan.sln
+        Write-Host "Found Visual Studio Installer at: $installerPath"
+        Write-Host "Found Visual Studio 2022 Enterprise at: $vsInstallationPath"
+        Write-Host "Adding component '$componentId' to Visual Studio installation..."
 
-      - name: Build solution (Release Any CPU -> 64-bit)
-        run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" /p:PlatformTarget=x64
+        # 调用 Visual Studio Installer，以静默方式添加组件
+        # --add：添加指定的组件
+        # --installPath：指定要修改的 VS 实例S
+        # --quiet：静默模式 (不显示UI)
+        # --norestart：完成后不重启
+        Start-Process -FilePath $installerPath -ArgumentList "modify --installPath ""$vsInstallationPath"" --add $($componentId) --quiet --norestart" -Wait -PassThru | Out-Null
+        
+        # 检查安装程序的退出代码
+        # 0 表示成功，3010 也表示成功但需要重启（我们通过 /norestart 阻止了重启）
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Error "Failed to add .NET Framework 4.0 Targeting Pack. Exit Code: $LASTEXITCODE"
+            exit 1 # 如果安装失败，则使此步骤失败
+        }
+        Write-Host ".NET Framework 4.0 Targeting Pack added successfully into Visual Studio installation."
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: WcfScan-x64
-          path: |
-            **/bin/Release/**/*.exe
-            **/bin/Release/**/*.dll
+    - name: Restore NuGet Packages
+      run: msbuild WcfScan.sln /t:Restore
+
+    - name: Build Solution
+      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" 
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WcfScan-Build
+        path: WcfScan/bin/Release/
