@@ -24,18 +24,21 @@ jobs:
       shell: powershell
       run: |
         # 直接使用硬编码的 Program Files (x86) 路径，这是最可靠的方式
-        # 避免了环境变量解析问题
         $programFilesX86Path = "C:\Program Files (x86)"
 
         # 拼接 vswhere.exe 的完整路径
         $vswherePath = Join-Path -Path $programFilesX86Path -ChildPath "Microsoft Visual Studio\Installer\vswhere.exe"
         
+        # 优化查询：查找 Community/Professional/Enterprise 中的最新版本
+        # 这样可以兼容 GitHub Actions 运行器上常见的 VS 2022 版本
+        $productSearchArgs = "-products Microsoft.VisualStudio.Product.Community Microsoft.VisualStudio.Product.Professional Microsoft.VisualStudio.Product.Enterprise"
+
         # 查找 Visual Studio Installer 的可执行文件 (setup.exe)
         # vswhere -property installerPath 实际返回的是 installer\setup.exe 的完整路径
-        $setupExePath = & "$vswherePath" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installerPath
+        $setupExePath = & "$vswherePath" -latest $productSearchArgs -property installerPath
         
-        # 查找 Visual Studio 2022 Enterprise 的安装路径
-        $vsInstallationPath = & "$vswherePath" -latest -products Microsoft.VisualStudio.Product.Enterprise -property installationPath
+        # 查找 Visual Studio 2022 的安装路径
+        $vsInstallationPath = & "$vswherePath" -latest $productSearchArgs -property installationPath
         
         $componentId = "Microsoft.Component.NetFX.TargetPack.4.0"
 
@@ -43,12 +46,19 @@ jobs:
             Write-Error "vswhere.exe not found at: $vswherePath. This indicates a very unusual runner setup."
             exit 1
         }
+        
+        # 增加一些调试输出，查看 vswhere 到底找到了什么
+        Write-Host "Running vswhere.exe -latest $productSearchArgs -property installerPath"
+        Write-Host "setupExePath retrieved: '$setupExePath'"
+        Write-Host "Running vswhere.exe -latest $productSearchArgs -property installationPath"
+        Write-Host "vsInstallationPath retrieved: '$vsInstallationPath'"
+
         if (-not $setupExePath) {
-            Write-Error "Could not find Visual Studio Installer (setup.exe) path using vswhere.exe. Is VS 2022 Enterprise installed?"
+            Write-Error "Could not find Visual Studio Installer (setup.exe) path using vswhere.exe. Checked Community, Professional, Enterprise editions. Is VS 2022 installed?"
             exit 1
         }
         if (-not $vsInstallationPath) {
-            Write-Error "Could not find Visual Studio 2022 Enterprise installation path using vswhere.exe. Is VS 2022 Enterprise installed?"
+            Write-Error "Could not find Visual Studio 2022 installation path using vswhere.exe. Checked Community, Professional, Enterprise editions. Is VS 2022 installed?"
             exit 1
         }
         if (-not (Test-Path $setupExePath)) {
@@ -58,7 +68,7 @@ jobs:
 
         Write-Host "Found vswhere.exe at: $vswherePath"
         Write-Host "Found Visual Studio Installer (setup.exe) at: $setupExePath"
-        Write-Host "Found Visual Studio 2022 Enterprise at: $vsInstallationPath"
+        Write-Host "Found Visual Studio 2022 at: $vsInstallationPath"
         Write-Host "Adding component '$componentId' to Visual Studio installation..."
 
         # 调用 Visual Studio Installer，以静默方式添加组件
@@ -71,7 +81,6 @@ jobs:
         Write-Host ".NET Framework 4.0 Targeting Pack added successfully into Visual Studio installation."
 
     - name: Restore NuGet Packages
-      # 确保路径分隔符在Windows上是反斜杠
       run: msbuild WcfScan.sln /t:Restore
 
     - name: Build Solution
