@@ -18,13 +18,30 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
       with:
         vs-version: latest
-        # 移除 vs-installer-arguments，因为似乎没能有效安装 Target Pack
-        # vs-installer-arguments: --add Microsoft.Component.NetFX.TargetPack.4.0 --includeOptional 
+        # 移除 vs-installer-arguments，现在我们将直接安装所需的组件
 
-    # 关键修改：新增一个步骤，使用 Chocolatey 安装 .NET Framework 4.0 Developer Pack
-    - name: Install .NET Framework 4.0 Developer Pack
-      run: choco install netfx-40-devpack -y
-      shell: powershell # 确保使用 PowerShell 来运行 choco 命令
+    # 关键修改：新增一个步骤，下载并静默安装 .NET Framework 4.0 Developer Pack
+    - name: Download and Install .NET Framework 4.0 Developer Pack
+      shell: powershell # 确保使用 PowerShell 来运行命令
+      run: |
+        $downloadUrl = "https://download.microsoft.com/download/9/5/A/95A612A9-92DF-4D5E-9878-E16B7B9E3106/dotNetFx40_Full_setup.exe"
+        $installerPath = "dotNetFx40_Full_setup.exe"
+        
+        Write-Host "Downloading .NET Framework 4.0 Developer Pack from official Microsoft source..."
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
+
+        Write-Host "Installing .NET Framework 4.0 Developer Pack silently..."
+        # /q 或 /quiet 表示静默安装
+        # /norestart 表示安装完成后不重启
+        Start-Process -FilePath $installerPath -ArgumentList "/q /norestart" -Wait -PassThru | Out-Null
+        
+        # 检查安装程序的退出代码。
+        # 0 表示成功，3010 也表示成功但需要重启（我们通过 /norestart 阻止了重启）
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Error "Failed to install .NET Framework 4.0 Developer Pack. Exit Code: $LASTEXITCODE"
+            exit 1 # 如果安装失败，则使此步骤失败
+        }
+        Write-Host ".NET Framework 4.0 Developer Pack installed successfully."
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
