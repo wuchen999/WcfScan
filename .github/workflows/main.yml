@@ -25,57 +25,100 @@ jobs:
       run: |
         # 直接使用硬编码的 Program Files (x86) 路径，这是最可靠的方式
         $programFilesX86Path = "C:\Program Files (x86)"
-
-        # 拼接 vswhere.exe 的完整路径
         $vswherePath = Join-Path -Path $programFilesX86Path -ChildPath "Microsoft Visual Studio\Installer\vswhere.exe"
         
-        # 优化查询：查找 Community/Professional/Enterprise 中的最新版本
-        # 这样可以兼容 GitHub Actions 运行器上常见的 VS 2022 版本
-        $productSearchArgs = "-products Microsoft.VisualStudio.Product.Community Microsoft.VisualStudio.Product.Professional Microsoft.VisualStudio.Product.Enterprise"
+        # 检查 vswhere.exe 是否存在
+        if (-not (Test-Path $vswherePath)) {
+            Write-Error "Error: vswhere.exe not found at: $vswherePath. This is critical for locating Visual Studio."
+            exit 1
+        }
+        Write-Host "Found vswhere.exe at: $vswherePath"
 
-        # 查找 Visual Studio Installer 的可执行文件 (setup.exe)
-        # vswhere -property installerPath 实际返回的是 installer\setup.exe 的完整路径
-        $setupExePath = & "$vswherePath" -latest $productSearchArgs -property installerPath
-        
-        # 查找 Visual Studio 2022 的安装路径
-        $vsInstallationPath = & "$vswherePath" -latest $productSearchArgs -property installationPath
-        
+        # 定义要尝试的 Visual Studio 产品ID列表，按照在GitHub Actions运行器上常见的顺序
+        $productIdsToTry = @(
+            "Microsoft.VisualStudio.Product.Community", # 社区版最常见
+            "Microsoft.VisualStudio.Product.Professional",
+            "Microsoft.VisualStudio.Product.Enterprise" # 企业版不太常见
+        )
+
+        $setupExePath = $null
+        $vsInstallationPath = $null
         $componentId = "Microsoft.Component.NetFX.TargetPack.4.0"
 
-        if (-not (Test-Path $vswherePath)) {
-            Write-Error "vswhere.exe not found at: $vswherePath. This indicates a very unusual runner setup."
-            exit 1
-        }
-        
-        # 增加一些调试输出，查看 vswhere 到底找到了什么
-        Write-Host "Running vswhere.exe -latest $productSearchArgs -property installerPath"
-        Write-Host "setupExePath retrieved: '$setupExePath'"
-        Write-Host "Running vswhere.exe -latest $productSearchArgs -property installationPath"
-        Write-Host "vsInstallationPath retrieved: '$vsInstallationPath'"
+        # 尝试通过遍历产品ID来查找 Visual Studio 安装
+        foreach ($productId in $productIdsToTry) {
+            Write-Host "Attempting to locate Visual Studio for product ID: '$productId'..."
+            
+            # vswhere 参数，每次只查询一个产品ID
+            $vswhereArgsForInstallerPath = @(
+                '-latest',
+                '-products', $productId,
+                '-property', 'installerPath'
+            )
+            
+            # 执行 vswhere 获取 installerPath
+            # 将标准输出和错误输出都捕获到 $rawOutputInstaller
+            $rawOutputInstaller = & "$vswherePath" @vswhereArgsForInstallerPath 2>&1
+            # 从输出中提取路径，并过滤掉错误/警告/版本信息行，然后清理空格
+            $currentSetupExePath = $rawOutputInstaller | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String | Trim()
 
-        if (-not $setupExePath) {
-            Write-Error "Could not find Visual Studio Installer (setup.exe) path using vswhere.exe. Checked Community, Professional, Enterprise editions. Is VS 2022 installed?"
-            exit 1
+            # 修改参数以获取 installationPath
+            $vswhereArgsForInstallationPath = @(
+                '-latest',
+                '-products', $productId,
+                '-property', 'installationPath'
+            )
+
+            # 执行 vswhere 获取 installationPath
+            $rawOutputInstallation = & "$vswherePath" @vswhereArgsForInstallationPath 2>&1
+            $currentVsInstallationPath = $rawOutputInstallation | Where-Object { $_ -notmatch 'Error|Warning|^Visual Studio Locator' } | Select-Object -First 1 | Out-String | Trim()
+
+            # 检查 vswhere 是否输出了错误/警告信息
+            $installerOutputHasError = $rawOutputInstaller | Where-Object { $_ -match 'Error|Warning' }
+            $installationOutputHasError = $rawOutputInstallation | Where-Object { $_ -match 'Error|Warning' }
+
+            # 如果找到了有效路径，且 vswhere 本身没有报告错误，则使用此安装并退出循环
+            if ($currentSetupExePath -and (Test-Path $currentSetupExePath) -and `
+                $currentVsInstallationPath -and (Test-Path $currentVsInstallationPath) -and `
+                (-not $installerOutputHasError) -and (-not $installationOutputHasError) ) {
+                
+                $setupExePath = $currentSetupExePath
+                $vsInstallationPath = $currentVsInstallationPath
+                Write-Host "Successfully located Visual Studio ($productId) at '$vsInstallationPath'"
+                break # 找到了，退出循环
+            } else {
+                Write-Host "Could not locate a valid Visual Studio installation for '$productId'. Debug Info:"
+                Write-Host "  Attempted Installer Path: '$currentSetupExePath'"
+                if ($installerOutputHasError) {
+                    Write-Host "  vswhere Installer Raw Output (Error/Warning lines): $($installerOutputHasError | Out-String | Trim())"
+                } else {
+                    Write-Host "  vswhere Installer All Output: $($rawOutputInstaller | Out-String | Trim())"
+                }
+                Write-Host "  Attempted Installation Path: '$currentVsInstallationPath'"
+                if ($installationOutputHasError) {
+                    Write-Host "  vswhere Installation Raw Output (Error/Warning lines): $($installationOutputHasError | Out-String | Trim())"
+                } else {
+                    Write-Host "  vswhere Installation All Output: $($rawOutputInstallation | Out-String | Trim())"
+                }
+            }
         }
-        if (-not $vsInstallationPath) {
-            Write-Error "Could not find Visual Studio 2022 installation path using vswhere.exe. Checked Community, Professional, Enterprise editions. Is VS 2022 installed?"
-            exit 1
-        }
-        if (-not (Test-Path $setupExePath)) {
-            Write-Error "Visual Studio Installer (setup.exe) not found at: $setupExePath"
+
+        # 循环结束后，再次检查是否找到了可用的 Visual Studio 安装
+        if (-not $setupExePath -or -not $vsInstallationPath) {
+            Write-Error "Error: Failed to find any suitable Visual Studio 2022 installation (Community, Professional, or Enterprise) to modify after checking all common editions."
             exit 1
         }
 
-        Write-Host "Found vswhere.exe at: $vswherePath"
-        Write-Host "Found Visual Studio Installer (setup.exe) at: $setupExePath"
-        Write-Host "Found Visual Studio 2022 at: $vsInstallationPath"
+        Write-Host "Proceeding with Visual Studio Installer (setup.exe) at: '$setupExePath'"
+        Write-Host "Targeting Visual Studio installation at: '$vsInstallationPath'"
         Write-Host "Adding component '$componentId' to Visual Studio installation..."
 
         # 调用 Visual Studio Installer，以静默方式添加组件
         Start-Process -FilePath $setupExePath -ArgumentList "modify --installPath ""$vsInstallationPath"" --add $($componentId) --quiet --norestart" -Wait -PassThru | Out-Null
         
-        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-            Write-Error "Failed to add .NET Framework 4.0 Targeting Pack. Exit Code: $LASTEXITCODE"
+        # 检查 Start-Process 命令的退出代码
+        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { # 3010 表示成功但需要重启
+            Write-Error "Failed to add .NET Framework 4.0 Targeting Pack. Visual Studio Installer exited with code: $LASTEXITCODE"
             exit 1
         }
         Write-Host ".NET Framework 4.0 Targeting Pack added successfully into Visual Studio installation."
