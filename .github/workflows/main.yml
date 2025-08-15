@@ -18,14 +18,15 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
       with:
         vs-version: latest
-        # 移除或注释掉此行，因为它对预装runner可能不起作用
-        # vs-installer-arguments: --add Microsoft.VisualStudio.Workload.ManagedDesktop --includeOptional 
+        # 关键修改：明确添加 .NET Framework 4.0 Targeting Pack 组件
+        vs-installer-arguments: --add Microsoft.Component.NetFX.TargetPack.4.0 --includeOptional 
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
 
     - name: Build Solution
-      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" /p:ReferencePath="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0\" # <-- 重要的修改在这里！
+      # 移除 ReferencePath 参数，因为 Targeting Pack 安装后不再需要
+      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" 
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
