@@ -18,13 +18,14 @@ jobs:
       uses: microsoft/setup-msbuild@v1.1
       with:
         vs-version: latest
-        vs-installer-arguments: --add Microsoft.VisualStudio.Workload.ManagedDesktop --includeOptional # <-- 新增或修改的行
+        # 移除或注释掉此行，因为它对预装runner可能不起作用
+        # vs-installer-arguments: --add Microsoft.VisualStudio.Workload.ManagedDesktop --includeOptional 
 
     - name: Restore NuGet Packages
       run: msbuild WcfScan.sln /t:Restore
 
     - name: Build Solution
-      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU"
+      run: msbuild WcfScan.sln /p:Configuration=Release /p:Platform="Any CPU" /p:ReferencePath="C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.0\" # <-- 重要的修改在这里！
 
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
